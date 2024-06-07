@@ -12,6 +12,17 @@
 #include "db_searcher.h"
 #include "byte_utils.h"
 
+/**
+ * Initializes a DBSearcher structure.
+ *
+ * This function takes in the path to the database file, a key, and the type of search to be performed.
+ * It then creates a DBSearcher structure, which is used to perform searches on the database.
+ *
+ * @param dbFilePath Path to the database file.
+ * @param key Key used for decryption.
+ * @param searchType Type of search to be performed (BTREE or other).
+ * @return Pointer to the initialized DBSearcher structure, or NULL if an error occurred.
+ */
 DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     FILE *file = fopen(dbFilePath, "rb");
 
@@ -46,6 +57,16 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     return searcher;
 }
 
+/**
+ * Performs a search in the database for the region associated with the given IP address.
+ *
+ * @param ipString The IP address as a string.
+ * @param dbSearcher Pointer to the DBSearcher structure.
+ * @param region Buffer to store the region associated with the IP address.
+ * @param regionLen Length of the region buffer.
+ * @return The result of the search operation. If the search type is BTREE, it returns the result of the bTreeSearch function.
+ *         If the search type is not BTREE, it returns -1.
+ */
 int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen) {
     int offset = getHyperHeaderBlockSize(dbSearcher->hyperHeaderBlock);
 
@@ -57,6 +78,14 @@ int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen) 
     }
 }
 
+/**
+ * Closes the DBSearcher and frees the associated resources.
+ *
+ * This function is responsible for closing the DBSearcher and freeing up the resources associated with it.
+ * It ensures that the file, BtreeModeParam, and HyperHeaderBlock associated with the DBSearcher are properly closed and freed.
+ *
+ * @param dbSearcher Pointer to the DBSearcher structure to be closed and freed.
+ */
 void closeDBSearcher(DBSearcher* dbSearcher) {
     if (dbSearcher == NULL) {
         return;
@@ -114,9 +143,12 @@ void info(DBSearcher* dbSearcher) {
 /**
  * Initializes the BtreeModeParam structure.
  *
+ * This function is responsible for setting up the BtreeModeParam structure which is used in the B-tree search algorithm.
+ * It reads the necessary information from the database file and prepares the parameters for the B-tree search.
+ *
  * @param fp File pointer to the database file.
  * @param offset Offset to start reading from in the database file.
- * @return Pointer to the initialized BtreeModeParam structure.
+ * @return Pointer to the initialized BtreeModeParam structure, or NULL if an error occurred.
  */
 BtreeModeParam* initBtreeModeParam(FILE* fp, long offset) {
     fseek(fp, offset, SEEK_SET);
