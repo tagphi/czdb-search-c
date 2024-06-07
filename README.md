@@ -54,7 +54,7 @@
 一个可行的方法是为每个线程创建一个DBSearcher，然后在线程销毁的时候销毁DBSearcher。
 
 ## 线程安全
-支持2种查询方式Memory和Btree，Memory方式是线程安全的，Btree方式不是线程安全的。这主要是因为DBSearcher这个结构种保存了文件句柄，如果多个线程同时访问会导致文件指针错乱。
+支持2种查询方式Memory和Btree，Memory方式是线程安全的，Btree方式不是线程安全的。这主要是因为DBSearcher这个结构中保存了文件句柄，如果多个线程同时访问会导致文件指针错乱。
 
 ## 许可
 
