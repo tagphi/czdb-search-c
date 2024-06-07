@@ -5,6 +5,11 @@ int main(void) {
 
     info(dbSearcher);
 
+    char region[100];
+    search("1.32.240.0", dbSearcher, region, 100);
+
+    printf("Region: %s\n", region);
+
     closeDBSearcher(dbSearcher);
 
     return 0;

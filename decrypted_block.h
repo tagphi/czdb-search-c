@@ -12,6 +12,6 @@ typedef struct {
     int randomSize;
 } DecryptedBlock;
 int aes_ecb_decrypt(const uint8_t *encrypted_data, const uint8_t *key, uint8_t *decrypted_data);
-DecryptedBlock decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t encryptedSize);
+int decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t encryptedSize, DecryptedBlock* decryptedBlock);
 
 #endif //DECRYPTED_BLOCK_H

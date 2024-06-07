@@ -12,21 +12,24 @@
 #define EXPIRATION_DATE_MASK 0x000FFFFF
 #define RANDOM_SIZE_OFFSET 4
 
-unsigned char* base64_decode(const char* input, int length) {
+int base64_decode(const char* input, int length, unsigned char* buffer, int buffer_length) {
     BIO *b64, *bmem;
-    unsigned char* buffer = (unsigned char*)malloc(length);
-    memset(buffer, 0, length);
 
     b64 = BIO_new(BIO_f_base64());
     bmem = BIO_new_mem_buf((void*)input, length);
     bmem = BIO_push(b64, bmem);
 
     BIO_set_flags(bmem, BIO_FLAGS_BASE64_NO_NL);
-    int decoded_length = BIO_read(bmem, buffer, length);
+    int decoded_length = BIO_read(bmem, buffer, buffer_length);
 
     BIO_free_all(bmem);
 
-    return buffer;
+    if (decoded_length > buffer_length) {
+        fprintf(stderr, "Error: Decoded data is larger than buffer.\n");
+        return -1;
+    }
+
+    return decoded_length;
 }
 
 // Decrypt encrypted data using AES ECB mode
@@ -59,47 +62,55 @@ int aes_ecb_decrypt(const uint8_t *encrypted_data, const uint8_t *key, uint8_t *
     int final_len;
     if (1 != EVP_DecryptFinal_ex(ctx, decrypted_data + decrypted_len, &final_len)) {
         EVP_CIPHER_CTX_free(ctx);
-        return 0;
+        return 1;
     }
     decrypted_len += final_len;
 
     // Clean up
     EVP_CIPHER_CTX_free(ctx);
 
-    return 1;
+    return 0;
 }
 
 // Function to decrypt encrypted bytes into DecryptedBlock
-DecryptedBlock decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t encryptedSize) {
+int decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t encryptedSize, DecryptedBlock* decryptedBlock) {
     // Initialize AES key and IV
     AES_KEY aesKey;
     if (AES_set_decrypt_key((const unsigned char *)key, 128, &aesKey) < 0) {
         fprintf(stderr, "Error: AES key initialization failed.\n");
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     // Allocate memory for decrypted bytes
     uint8_t *decryptedBytes = (uint8_t *)malloc(encryptedSize);
     if (decryptedBytes == NULL) {
         fprintf(stderr, "Error: Memory allocation failed.\n");
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     // Decode Base64 key
-    uint8_t *key_bytes = base64_decode(key, strlen(key));
-    aes_ecb_decrypt(encryptedBytes, key_bytes, decryptedBytes);
+    unsigned char key_bytes[16];
+    int ret = base64_decode(key, strlen(key), key_bytes, 16);
 
-    // printBytesInHex(decryptedBytes, encryptedSize);
+    if (ret < 0) {
+        fprintf(stderr, "Error: Base64 decoding failed.\n");
+        free(decryptedBytes);
+        return -1;
+    }
+
+    if (!aes_ecb_decrypt(encryptedBytes, key_bytes, decryptedBytes)) {
+        fprintf(stderr, "Error: AES decryption failed.\n");
+        free(decryptedBytes);
+        return -1;
+    }
 
     // Parse the decrypted bytes
-    DecryptedBlock decryptedBlock;
-    decryptedBlock.clientId = (int) getIntLong(decryptedBytes, 0) >> 20;
-    decryptedBlock.expirationDate = (int) getIntLong(decryptedBytes, 0) & EXPIRATION_DATE_MASK;
-    decryptedBlock.randomSize = (int) getIntLong(decryptedBytes, 4);
+    decryptedBlock->clientId = (int) getIntLong(decryptedBytes, 0) >> 20;
+    decryptedBlock->expirationDate = (int) getIntLong(decryptedBytes, 0) & EXPIRATION_DATE_MASK;
+    decryptedBlock->randomSize = (int) getIntLong(decryptedBytes, 4);
 
     // Free allocated memory
     free(decryptedBytes);
-    free(key_bytes);
 
-    return decryptedBlock;
+    return 1;
 }

@@ -23,7 +23,13 @@ HyperHeaderBlock* decryptHyperHeaderBlock(FILE *file, const char *key) {
     fread(encryptedBytes, sizeof(uint8_t), encryptedBlockSize, file);
 
     // Decrypt encrypted bytes into DecryptedBlock
-    DecryptedBlock decryptedBlock = decryptEncryptedBytes(key, encryptedBytes, encryptedBlockSize);
+    DecryptedBlock decryptedBlock;
+    int ret = decryptEncryptedBytes(key, encryptedBytes, encryptedBlockSize, &decryptedBlock);
+
+    if (ret < 0) {
+        free(encryptedBytes);
+        return NULL;
+    }
 
     // Check clientId and expirationDate
     if (decryptedBlock.clientId != clientId) {

@@ -35,6 +35,7 @@ typedef struct {
 } DBSearcher;
 
 DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType);
+int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen);
 void closeDBSearcher(DBSearcher* dbSearcher);
 void info(DBSearcher* dbSearcher);
 BtreeModeParam* initBtreeModeParam(FILE* fp, long offset);

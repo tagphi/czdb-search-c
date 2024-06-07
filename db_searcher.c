@@ -46,6 +46,17 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     return searcher;
 }
 
+int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen) {
+    int offset = getHyperHeaderBlockSize(dbSearcher->hyperHeaderBlock);
+
+    if (dbSearcher->searchType == BTREE) {
+        return bTreeSearch(dbSearcher->file, ipString, dbSearcher->btreeModeParam, region, regionLen, offset);
+    } else {
+        fprintf(stderr, "Unsupported search type\n");
+        return -1;
+    }
+}
+
 void closeDBSearcher(DBSearcher* dbSearcher) {
     if (dbSearcher == NULL) {
         return;
@@ -79,7 +90,6 @@ void info(DBSearcher* dbSearcher) {
         printf("Encrypted Block Size: %d\n", headerBlock->encryptedBlockSize);
         printf("Decrypted Block - Client ID: %d\n", headerBlock->decryptedBlock.clientId);
         printf("Decrypted Block - Expiration Date: %d\n", headerBlock->decryptedBlock.expirationDate);
-        printf("Decrypted Block - Random Size: %d\n", headerBlock->decryptedBlock.randomSize);
     }
 
     fseek(dbSearcher->file, getHyperHeaderBlockSize(headerBlock), SEEK_SET);
