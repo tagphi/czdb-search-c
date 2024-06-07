@@ -43,7 +43,7 @@
 
 5. 运行编译后的程序：
     ```bash
-    ./CZDBSearcher
+    ./CZDBSearcher -p /path/to/ipdbfile -k key
     ```
 ## 使用
 
