@@ -4,9 +4,7 @@
 #include <string.h>
 #include <openssl/aes.h>
 #include <openssl/evp.h>
-#include <openssl/aes.h>
 #include <openssl/bio.h>
-#include <openssl/buffer.h>
 #include "decrypted_block.h"
 #include "byte_utils.h"
 
@@ -91,7 +89,7 @@ DecryptedBlock decryptEncryptedBytes(const char *key, const uint8_t *encryptedBy
     uint8_t *key_bytes = base64_decode(key, strlen(key));
     aes_ecb_decrypt(encryptedBytes, key_bytes, decryptedBytes);
 
-    printBytesInHex(decryptedBytes, encryptedSize);
+    // printBytesInHex(decryptedBytes, encryptedSize);
 
     // Parse the decrypted bytes
     DecryptedBlock decryptedBlock;

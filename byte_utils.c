@@ -6,12 +6,14 @@
 #include "byte_utils.h"
 
 int getIntLong(char *b, int offset) {
-    return (int)(
-            ((b[offset++] & 0x000000FFL)) |
-            ((b[offset++] << 8) & 0x0000FF00L) |
-            ((b[offset++] << 16) & 0x00FF0000L) |
-            ((b[offset] << 24) & 0xFF000000L)
+    int result = (int)(
+            ((b[offset] & 0x000000FFL)) |
+            ((b[offset + 1] << 8) & 0x0000FF00L) |
+            ((b[offset + 2] << 16) & 0x00FF0000L) |
+            ((b[offset + 3] << 24) & 0xFF000000L)
     );
+
+    return result;
 }
 
 int getInt1(char *b, int offset) {

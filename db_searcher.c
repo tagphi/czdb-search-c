@@ -12,6 +12,95 @@
 #include "db_searcher.h"
 #include "byte_utils.h"
 
+DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
+    FILE *file = fopen(dbFilePath, "rb");
+
+    HyperHeaderBlock* headerBlock = decryptHyperHeaderBlock(file, key);
+
+    if (headerBlock == NULL) {
+        return NULL;
+    }
+
+    DBSearcher* searcher = (DBSearcher*)malloc(sizeof(DBSearcher));
+    if (searcher == NULL) {
+        return NULL;
+    }
+
+    searcher->file = file;
+
+    if (searchType == BTREE) {
+        BtreeModeParam* btreeModeParam = initBtreeModeParam(file, getHyperHeaderBlockSize(headerBlock));
+
+        if (btreeModeParam == NULL) {
+            free(searcher);
+            fclose(file);
+            return NULL;
+        }
+
+        searcher->btreeModeParam = btreeModeParam;
+    }
+
+    searcher->searchType = searchType;
+    searcher->hyperHeaderBlock = headerBlock;
+
+    return searcher;
+}
+
+void closeDBSearcher(DBSearcher* dbSearcher) {
+    if (dbSearcher == NULL) {
+        return;
+    }
+
+    // Close the file
+    if (dbSearcher->file != NULL) {
+        fclose(dbSearcher->file);
+    }
+
+    // Free the BtreeModeParam
+    if (dbSearcher->btreeModeParam != NULL) {
+        freeBtreeModeParam(dbSearcher->btreeModeParam);
+    }
+
+    // Free the HyperHeaderBlock
+    if (dbSearcher->hyperHeaderBlock != NULL) {
+        free(dbSearcher->hyperHeaderBlock);
+    }
+
+    // Finally, free the DBSearcher itself
+    free(dbSearcher);
+}
+
+void info(DBSearcher* dbSearcher) {
+    HyperHeaderBlock* headerBlock = dbSearcher->hyperHeaderBlock;
+
+    if (headerBlock != NULL) {
+        printf("Version: %d\n", headerBlock->version);
+        printf("Client ID: %d\n", headerBlock->clientId);
+        printf("Encrypted Block Size: %d\n", headerBlock->encryptedBlockSize);
+        printf("Decrypted Block - Client ID: %d\n", headerBlock->decryptedBlock.clientId);
+        printf("Decrypted Block - Expiration Date: %d\n", headerBlock->decryptedBlock.expirationDate);
+        printf("Decrypted Block - Random Size: %d\n", headerBlock->decryptedBlock.randomSize);
+    }
+
+    fseek(dbSearcher->file, getHyperHeaderBlockSize(headerBlock), SEEK_SET);
+
+    // 17 bytes Super Header
+    char superBytes[SUPER_PART_LENGTH];
+    fread(superBytes, SUPER_PART_LENGTH, 1, dbSearcher->file);
+
+    int dbType = getInt1(superBytes, 0);
+    int dbSize = getIntLong(superBytes, 1);
+    int headerBlockSize = getIntLong(superBytes, 5);
+    int startIndexPtr = getIntLong(superBytes, 9);
+    int endIndexPtr = getIntLong(superBytes, 13);
+
+    printf("DB Type: %d\n", dbType);
+    printf("DB Size: %d\n", dbSize);
+    printf("Header Block Size: %d\n", headerBlockSize);
+    printf("Start Index Pointer: %d\n", startIndexPtr);
+    printf("End Index Pointer: %d\n", endIndexPtr);
+}
+
 /**
  * Initializes the BtreeModeParam structure.
  *
@@ -27,39 +116,68 @@ BtreeModeParam* initBtreeModeParam(FILE* fp, long offset) {
     fseek(fp, 0, SEEK_END);
     long realFileSize = ftell(fp) - offset;
 
-    long totalHeaderBlockSize = getIntLong(superBytes, HEADER_BLOCK_PTR); // Assuming the totalHeaderBlockSize is at index 1 in superBytes
+    long totalHeaderBlockSize = getIntLong(superBytes, HEADER_BLOCK_PTR);
     long fileSizeInFile = getIntLong(superBytes, FILE_SIZE_PTR);
 
-    if (fileSizeInFile != realFileSize) {
-        printf("db file size error, expected [%ld], real [%ld]\n", totalHeaderBlockSize, realFileSize);
-        exit(1);
+    char* b = (char*)malloc(totalHeaderBlockSize);
+    if (b == NULL) {
+        return NULL;
     }
 
-    char* b = (char*)malloc(totalHeaderBlockSize);
     fseek(fp, offset + SUPER_PART_LENGTH, SEEK_SET);
     fread(b, totalHeaderBlockSize, 1, fp);
 
+    if (fileSizeInFile != realFileSize) {
+        printf("db file size error, expected [%ld], real [%ld]\n", totalHeaderBlockSize, realFileSize);
+        free(b);
+        return NULL;
+    }
+
     int len = (int)totalHeaderBlockSize / HEADER_BLOCK_LENGTH;
-    char** HeaderSip = (char**)malloc(len * sizeof(char*));
-    int* HeaderPtr = (int*)malloc(len * sizeof(int));
+    char** headerSip = (char**)malloc(len * sizeof(char*));
+    int* headerPtr = (int*)malloc(len * sizeof(int));
+
+    if (headerSip == NULL || headerPtr == NULL) {
+        free(b);
+        return NULL;
+    }
 
     int idx = 0;
     long dataPtr;
     for (int i = 0; i < totalHeaderBlockSize; i += HEADER_BLOCK_LENGTH) {
-        dataPtr = getIntLong(b, i + 16); // Assuming the dataPtr is at index i + 16 in b
+        dataPtr = getIntLong(b, i + 16);
         if (dataPtr == 0) {
             break;
         }
-        HeaderSip[idx] = (char*)malloc(16);
-        memcpy(HeaderSip[idx], &b[i], 16);
-        HeaderPtr[idx] = (int)dataPtr;
+        headerSip[idx] = (char*)malloc(16);
+        if (headerSip[idx] == NULL) {
+            for (int j = 0; j < idx; j++) {
+                free(headerSip[j]);
+            }
+            free(headerSip);
+            free(headerPtr);
+            free(b);
+            return NULL;
+        }
+        memcpy(headerSip[idx], &b[i], 16);
+        headerPtr[idx] = (int)dataPtr;
         idx++;
     }
 
     BtreeModeParam* param = (BtreeModeParam*)malloc(sizeof(BtreeModeParam));
+    if (param == NULL) {
+        for (int j = 0; j < idx; j++) {
+            free(headerSip[j]);
+        }
+        free(headerSip);
+        free(headerPtr);
+        free(b);
+        return NULL;
+    }
+
     param->headerLength = idx;
-    param->HeaderPtr = HeaderPtr;
-    param->HeaderSip = HeaderSip;
+    param->HeaderPtr = headerPtr;
+    param->HeaderSip = headerSip;
 
     free(b);
 

@@ -4,7 +4,7 @@ project(CZDBSearcher C)
 set(CMAKE_C_STANDARD 99)
 
 # Add the dynamic library
-add_library(db_searcher SHARED db_searcher.c db_searcher.h byte_utils.c byte_utils.h)
+add_library(db_searcher SHARED db_searcher.c byte_utils.c hyper_header_block.c decrypted_block.c)
 
 add_executable(CZDBSearcher main.c hyper_header_block.c decrypted_block.c
         byte_utils.c
@@ -17,7 +17,7 @@ target_link_libraries(CZDBSearcher db_searcher)
 find_package(OpenSSL REQUIRED)
 if(OpenSSL_FOUND)
     include_directories(${OPENSSL_INCLUDE_DIR})
-    target_link_libraries(CZDBSearcher ${OPENSSL_LIBRARIES})
+    target_link_libraries(db_searcher ${OPENSSL_LIBRARIES})
 else()
     message(FATAL_ERROR "OpenSSL not found")
 endif()

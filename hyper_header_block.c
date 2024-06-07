@@ -28,7 +28,6 @@ HyperHeaderBlock* decryptHyperHeaderBlock(FILE *file, const char *key) {
     // Check clientId and expirationDate
     if (decryptedBlock.clientId != clientId) {
         printf("Wrong clientId\n");
-        fclose(file);
         free(encryptedBytes);
         return NULL;
     }
@@ -39,7 +38,6 @@ HyperHeaderBlock* decryptHyperHeaderBlock(FILE *file, const char *key) {
 
     if (decryptedBlock.expirationDate < currentDate) {
         printf("DB is expired\n");
-        fclose(file);
         free(encryptedBytes);
         return NULL;
     }
@@ -51,7 +49,6 @@ HyperHeaderBlock* decryptHyperHeaderBlock(FILE *file, const char *key) {
     hyperHeaderBlock->encryptedBlockSize = encryptedBlockSize;
     hyperHeaderBlock->decryptedBlock = decryptedBlock;
 
-    fclose(file);
     free(encryptedBytes);
 
     return hyperHeaderBlock;

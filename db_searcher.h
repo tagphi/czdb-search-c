@@ -34,6 +34,9 @@ typedef struct {
     HyperHeaderBlock* hyperHeaderBlock;
 } DBSearcher;
 
+DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType);
+void closeDBSearcher(DBSearcher* dbSearcher);
+void info(DBSearcher* dbSearcher);
 BtreeModeParam* initBtreeModeParam(FILE* fp, long offset);
 
 void freeBtreeModeParam(BtreeModeParam* param);
