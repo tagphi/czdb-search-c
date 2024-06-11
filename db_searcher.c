@@ -334,8 +334,8 @@ int bTreeSearch(FILE* fp, char* ipString, BtreeModeParam* param, char* region, i
         int m = (l + h) >> 1;
         int p = m * blen;
 
-        int cmpStart = compareBytes(ip, &indexBuffer[p], 16);
-        int cmpEnd = compareBytes(ip, &indexBuffer[p + 16], 16);
+        int cmpStart = compareBytes(ip, &indexBuffer[p], ipBytesLength);
+        int cmpEnd = compareBytes(ip, &indexBuffer[p + 16], ipBytesLength);
 
         if (cmpStart >= 0 && cmpEnd <= 0) {
             // IP is in this block
