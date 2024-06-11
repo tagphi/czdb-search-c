@@ -37,7 +37,7 @@ int base64_decode(const char* input, int length, unsigned char* buffer, int buff
 // key: AES encryption key
 // decrypted_data: Pointer to store the decrypted data
 // Returns 1 on success, 0 on failure
-int aes_ecb_decrypt(const uint8_t *encrypted_data, const uint8_t *key, uint8_t *decrypted_data) {
+int aes_ecb_decrypt(const uint8_t *encrypted_data, uint8_t encrypted_data_len, const uint8_t *key, uint8_t *decrypted_data) {
     EVP_CIPHER_CTX *ctx;
 
     // Create and initialize the context
@@ -53,7 +53,9 @@ int aes_ecb_decrypt(const uint8_t *encrypted_data, const uint8_t *key, uint8_t *
 
     // Decrypt data
     int decrypted_len;
-    if (1 != EVP_DecryptUpdate(ctx, decrypted_data, &decrypted_len, encrypted_data, AES_BLOCK_SIZE)) {
+    if (1 != EVP_DecryptUpdate(ctx, decrypted_data, &decrypted_len, encrypted_data, encrypted_data_len)) {
+        printf("Error: EVP_DecryptUpdate failed.\n");
+
         EVP_CIPHER_CTX_free(ctx);
         return 0;
     }
@@ -61,15 +63,18 @@ int aes_ecb_decrypt(const uint8_t *encrypted_data, const uint8_t *key, uint8_t *
     // Finalize decryption
     int final_len;
     if (1 != EVP_DecryptFinal_ex(ctx, decrypted_data + decrypted_len, &final_len)) {
+        printf("Error: EVP_DecryptFinal_ex failed.\n");
+
         EVP_CIPHER_CTX_free(ctx);
-        return 1;
+        return 0;
     }
+
     decrypted_len += final_len;
 
     // Clean up
     EVP_CIPHER_CTX_free(ctx);
 
-    return 0;
+    return 1;
 }
 
 // Function to decrypt encrypted bytes into DecryptedBlock
@@ -98,7 +103,7 @@ int decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t
         return -1;
     }
 
-    if (!aes_ecb_decrypt(encryptedBytes, key_bytes, decryptedBytes)) {
+    if (!aes_ecb_decrypt(encryptedBytes, encryptedSize, key_bytes, decryptedBytes)) {
         fprintf(stderr, "Error: AES decryption failed.\n");
         free(decryptedBytes);
         return -1;

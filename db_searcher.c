@@ -284,6 +284,9 @@ int bTreeSearch(FILE* fp, char* ipString, BtreeModeParam* param, char* region, i
     int ipBytesLength = searchType == IPV4 ? 4 : 16;
     char ip[ipBytesLength];
 
+    // clear region
+    memset(region, 0, regionLen);
+
     getIpBytes(ipString, ip, searchType);
 
     int l = 0, h = param->headerLength - 1, sptr = 0, eptr = 0;
@@ -368,8 +371,6 @@ int bTreeSearch(FILE* fp, char* ipString, BtreeModeParam* param, char* region, i
 
     fread(data, dataLen, 1, fp);
 
-    // clear region
-    memset(region, 0, regionLen);
     memcpy(region, data, dataLen);
     free(data);
 
