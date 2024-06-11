@@ -3,8 +3,8 @@
 #include <unistd.h>
 
 int main(int argc, char *argv[]) {
-    char* dbPath = "/Users/liucong/Downloads/offline_db.czdb";
-    char* key = "3fEhuZUEvDzRjKv9qvAzTQ==";
+    char* dbPath = NULL;
+    char* key = NULL;
     int opt;
 
     while ((opt = getopt(argc, argv, "p:k:")) != -1) {
@@ -16,9 +16,15 @@ int main(int argc, char *argv[]) {
             key = optarg;
             break;
         default:
-            fprintf(stderr, "Usage: %s [-p dbPath] [-k key]\n", argv[0]);
+            fprintf(stderr, "Usage: %s -p dbPath -k key\n", argv[0]);
             exit(EXIT_FAILURE);
         }
+    }
+
+    if (dbPath == NULL || key == NULL) {
+        fprintf(stderr, "Both -p and -k options are required.\n");
+        fprintf(stderr, "Usage: %s -p dbPath -k key\n", argv[0]);
+        exit(EXIT_FAILURE);
     }
 
     DBSearcher* dbSearcher = initDBSearcher(dbPath, key, BTREE);
