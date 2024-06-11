@@ -367,6 +367,9 @@ int bTreeSearch(FILE* fp, char* ipString, BtreeModeParam* param, char* region, i
     }
 
     fread(data, dataLen, 1, fp);
+
+    // clear region
+    memset(region, 0, regionLen);
     memcpy(region, data, dataLen);
     free(data);
 
