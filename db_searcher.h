@@ -32,17 +32,27 @@ typedef struct {
     BtreeModeParam* btreeModeParam;
     SearchType searchType; // 使用枚举类型来定义searchType字段
     HyperHeaderBlock* hyperHeaderBlock;
+    int startIndexPtr;
+    int endIndexPtr;
+    char* geoMapData;
+    int ipType;
+    int ipBytesLength;
+    int columnSelection;
 } DBSearcher;
 
 DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType);
 int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen);
+int unpack(char* geoMapData, long columnSelection, unsigned char* region, int regionSize, char* buf, int bufSize);
+int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen, char* buf, int bufSize);
 void closeDBSearcher(DBSearcher* dbSearcher);
 void info(DBSearcher* dbSearcher);
 BtreeModeParam* initBtreeModeParam(FILE* fp, long offset);
 
+void loadGeoMapping(DBSearcher* dbSearcher, int offset);
+
 void freeBtreeModeParam(BtreeModeParam* param);
 
-int bTreeSearch(FILE* fp, char* ip, BtreeModeParam* param, char* region, int regionLen, long offset);
+int bTreeSearch(FILE* fp, char* ip, DBSearcher* dbSearcher, char* region, int regionLen, long offset);
 
 void printIp(char* ipBytes, int ipType);
 

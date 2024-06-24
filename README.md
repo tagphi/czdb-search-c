@@ -7,6 +7,7 @@
 - CMake 3.10 或更高版本
 - GCC编译器
 - OpenSSL库
+- [Message Pack C库 6.0.2](https://github.com/msgpack/msgpack-c/tree/c_master)
 
 ## 构建项目
 

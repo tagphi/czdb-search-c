@@ -22,5 +22,17 @@ else()
     message(FATAL_ERROR "OpenSSL not found")
 endif()
 
+# Include msgpack headers
+include_directories(/usr/local/include)
+
+# Link msgpack library
+find_library(MSGPACK_LIBRARY msgpack-c /usr/local/lib)
+if(MSGPACK_LIBRARY)
+    target_link_libraries(db_searcher ${MSGPACK_LIBRARY})
+    target_link_libraries(CZDBSearcher ${MSGPACK_LIBRARY})
+else()
+    message(FATAL_ERROR "MsgPack not found")
+endif()
+
 # set the compiler flags
 set(CMAKE_C_FLAGS "-g")

@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include "db_searcher.h"
 #include "byte_utils.h"
+#include <msgpack.h>
 
 /**
  * Initializes a DBSearcher structure.
@@ -39,8 +40,10 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
 
     searcher->file = file;
 
+    int offset = getHyperHeaderBlockSize(headerBlock);
+
     if (searchType == BTREE) {
-        BtreeModeParam* btreeModeParam = initBtreeModeParam(file, getHyperHeaderBlockSize(headerBlock));
+        BtreeModeParam* btreeModeParam = initBtreeModeParam(file, offset);
 
         if (btreeModeParam == NULL) {
             free(searcher);
@@ -54,7 +57,49 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     searcher->searchType = searchType;
     searcher->hyperHeaderBlock = headerBlock;
 
+    // 17 bytes Super Header
+    fseek(file, offset, SEEK_SET);
+    char superBytes[SUPER_PART_LENGTH];
+    fread(superBytes, SUPER_PART_LENGTH, 1, file);
+
+    searcher->ipType = (superBytes[0] & 1) == 0 ? 4 : 6;
+    searcher->ipBytesLength = searcher->ipType == 4 ? 4 : 16;
+
+    searcher->startIndexPtr = getIntLong(superBytes, 9);
+    searcher->endIndexPtr = getIntLong(superBytes, 13);
+
+    // load geo settings
+    loadGeoMapping(searcher, offset);
+
     return searcher;
+}
+
+void loadGeoMapping(DBSearcher* dbSearcher, int offset) {
+    FILE* file = dbSearcher->file;
+    int endIndexPtr = dbSearcher->endIndexPtr;
+    int ipBytesLength = dbSearcher->ipBytesLength;
+
+    int columnSelectionPtr = offset + endIndexPtr + ipBytesLength * 2L + 4;
+    fseek(file, columnSelectionPtr, SEEK_SET);
+
+    char data[4];
+    fread(data, 4, 1, file);
+
+    dbSearcher->columnSelection = getIntLong(data, 0);
+    int geoMapPtr = columnSelectionPtr + 4;
+    fseek(file, geoMapPtr, SEEK_SET);
+    fread(data, 4, 1, file);
+
+    int geoMapSize = (int)getIntLong(data, 0);
+    fseek(file, geoMapPtr + 4, SEEK_SET);
+    dbSearcher->geoMapData = (char*)malloc(geoMapSize);
+
+    if (dbSearcher->geoMapData == NULL) {
+        // handle error
+        return;
+    }
+
+    fread(dbSearcher->geoMapData, geoMapSize, 1, file);
 }
 
 /**
@@ -71,7 +116,7 @@ int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen) 
     int offset = getHyperHeaderBlockSize(dbSearcher->hyperHeaderBlock);
 
     if (dbSearcher->searchType == BTREE) {
-        return bTreeSearch(dbSearcher->file, ipString, dbSearcher->btreeModeParam, region, regionLen, offset);
+        return bTreeSearch(dbSearcher->file, ipString, dbSearcher, region, regionLen, offset);
     } else {
         fprintf(stderr, "Unsupported search type\n");
         return -1;
@@ -106,6 +151,11 @@ void closeDBSearcher(DBSearcher* dbSearcher) {
         free(dbSearcher->hyperHeaderBlock);
     }
 
+    // Free geoMapData
+    if (dbSearcher->geoMapData != NULL) {
+        free(dbSearcher->geoMapData);
+    }
+
     // Finally, free the DBSearcher itself
     free(dbSearcher);
 }
@@ -116,7 +166,7 @@ void info(DBSearcher* dbSearcher) {
     if (headerBlock != NULL) {
         printf("Version: %d\n", headerBlock->version);
         printf("Client ID: %d\n", headerBlock->clientId);
-        printf("Encrypted Block Size: %d\n", headerBlock->encryptedBlockSize);
+        // printf("Encrypted Block Size: %d\n", headerBlock->encryptedBlockSize);
         printf("Decrypted Block - Client ID: %d\n", headerBlock->decryptedBlock.clientId);
         printf("Decrypted Block - Expiration Date: %d\n", headerBlock->decryptedBlock.expirationDate);
     }
@@ -130,14 +180,12 @@ void info(DBSearcher* dbSearcher) {
     int dbType = getInt1(superBytes, 0);
     int dbSize = getIntLong(superBytes, 1);
     int headerBlockSize = getIntLong(superBytes, 5);
-    int startIndexPtr = getIntLong(superBytes, 9);
-    int endIndexPtr = getIntLong(superBytes, 13);
 
     printf("DB Type: %d\n", dbType);
     printf("DB Size: %d\n", dbSize);
     printf("Header Block Size: %d\n", headerBlockSize);
-    printf("Start Index Pointer: %d\n", startIndexPtr);
-    printf("End Index Pointer: %d\n", endIndexPtr);
+    printf("Start Index Pointer: %d\n", dbSearcher->startIndexPtr);
+    printf("End Index Pointer: %d\n", dbSearcher->endIndexPtr);
 }
 
 /**
@@ -266,6 +314,163 @@ int getIpType(char* ip) {
     }
 }
 
+int unpack(char* geoMapData, long columnSelection, unsigned char* region, int regionSize, char* buf, int bufSize) {
+    msgpack_unpacker unp;
+    bool result = msgpack_unpacker_init(&unp, regionSize);
+
+    int ret = 0;
+
+    /* If memory allocation is failed, result is false, else result is true. */
+    if (result) {
+        if (msgpack_unpacker_buffer_capacity(&unp) < regionSize) {
+            result = msgpack_unpacker_reserve_buffer(&unp, regionSize);
+
+            if (!result) {
+                /* Memory allocation error. goto error handling*/
+                ret = -1;
+                goto cleanup;
+            }
+
+            memcpy(msgpack_unpacker_buffer(&unp), region, regionSize);
+            msgpack_unpacker_buffer_consumed(&unp, regionSize);
+
+            msgpack_unpacked und;
+            msgpack_unpack_return muret;
+            msgpack_unpacked_init(&und);
+            msgpack_unpacker_next(&unp, &und);
+
+            msgpack_object obj = und.data;
+            uint64_t geoPosMixSize = obj.via.u64;
+
+            int geoLen = (int)(geoPosMixSize >> 24) & 0xFF;
+            int geoPtr = (int)(geoPosMixSize & 0x00FFFFFF);
+
+            msgpack_unpacker_next(&unp, &und);
+            obj = und.data;
+
+            msgpack_object_str otherDataObj = obj.via.str;
+            uint32_t otherDataSize = otherDataObj.size;
+
+            int sizeWritten = getActualGeo(geoMapData, columnSelection, geoPtr, geoLen, buf, bufSize);
+
+            if (sizeWritten == -1) {
+                ret = -1;
+                goto cleanup;
+            }
+
+            // copy otherDataObj.ptr to buf
+            if (sizeWritten + otherDataSize < bufSize) {
+                strncat(buf, otherDataObj.ptr, otherDataSize);
+            } else {
+                ret = -1;
+                goto cleanup;
+            }
+
+            goto cleanup;
+        }/* Do unpacking */
+    } else {
+        /* Handle error */
+        ret = -1;
+        goto cleanup;
+    }
+
+    cleanup:
+    msgpack_unpacker_destroy(&unp);
+
+    return ret;
+}
+
+int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen, char* buf, int bufSize) {
+    char dataRow[geoLen];
+
+    // read geoMapData to dataRow, from geoPtr, size geoLen
+    memcpy(dataRow, geoMapData + geoPtr, geoLen);
+
+    // message unpack
+    msgpack_unpacker unp;
+    bool result = msgpack_unpacker_init(&unp, geoLen);
+
+    int ret = 0;
+
+    /* If memory allocation is failed, result is false, else result is true. */
+    if (result) {
+        if (msgpack_unpacker_buffer_capacity(&unp) < geoLen) {
+            result = msgpack_unpacker_reserve_buffer(&unp, geoLen);
+
+            if (!result) {
+                /* Memory allocation error. goto error handling*/
+                ret = -1;
+                goto cleanup;
+            }
+
+            memcpy(msgpack_unpacker_buffer(&unp), dataRow, geoLen);
+            msgpack_unpacker_buffer_consumed(&unp, geoLen);
+
+            msgpack_unpacked und;
+            msgpack_unpack_return muret;
+            msgpack_unpacked_init(&und);
+            muret = msgpack_unpacker_next(&unp, &und);
+
+            msgpack_object obj = und.data;
+
+            msgpack_object_array columns = obj.via.array;
+            uint32_t columnCount = columns.size;
+
+            int remainingSize = bufSize - 1; // Leave space for null terminator
+            int bytesWritten = 0;
+
+            for (int i = 0; i < columnCount; i++) {
+                bool columnSelected = (columnSelection >> (i + 1) & 1) == 1;
+                msgpack_object mpobj = columns.ptr[i];
+
+                msgpack_object_str str = mpobj.via.str;
+                int strSize = str.size;
+                char* value = str.ptr;
+
+                if (strcmp(value, "") == 0) {
+                    value = "null";
+                }
+
+                if (columnSelected) {
+                    // Copy value to buf
+                    if (strSize < remainingSize) {
+                        strncat(buf, value, strSize);
+                        bytesWritten += strSize;
+                        remainingSize -= strSize;
+                    } else {
+                        return -1; // Not enough space
+                    }
+
+                    // Copy "\t" to buf
+                    if (1 < remainingSize) { // "\t" is 1 byte
+                        strncat(buf, "\t", 1);
+                        bytesWritten += 1;
+                        remainingSize -= 1;
+                    } else {
+                        ret = -1; // Not enough space
+                        goto cleanup;
+                    }
+                }
+            }
+
+            buf[bytesWritten] = '\0'; // Ensure null-termination
+
+            ret = bytesWritten; // Return the number of bytes written
+
+            goto cleanup;
+        }/* Do unpacking */
+    } else {
+        /* Handle error */
+        ret = -1;
+        goto cleanup;
+    }
+
+    cleanup:
+    msgpack_unpacker_destroy(&unp);
+
+    return ret;
+}
+
 /**
  * Performs a binary search on the database file to find the region associated with the given IP address.
  *
@@ -278,7 +483,8 @@ int getIpType(char* ip) {
  * @return 0 if the operation is successful, -1 if the IP address is not found, -2 if the region buffer is too small.
  *        -3 if allocation error occurs.
  */
-int bTreeSearch(FILE* fp, char* ipString, BtreeModeParam* param, char* region, int regionLen, long offset) {
+int bTreeSearch(FILE* fp, char* ipString, DBSearcher* dbSearcher, char* region, int regionLen, long offset) {
+    BtreeModeParam* param = dbSearcher->btreeModeParam;
     int searchType;
     searchType = getIpType(ipString);
     int ipBytesLength = searchType == IPV4 ? 4 : 16;
@@ -371,7 +577,8 @@ int bTreeSearch(FILE* fp, char* ipString, BtreeModeParam* param, char* region, i
 
     fread(data, dataLen, 1, fp);
 
-    memcpy(region, data, dataLen);
+    unpack(dbSearcher->geoMapData, dbSearcher->columnSelection, data, dataLen, region, regionLen);
+
     free(data);
 
     return 0;
