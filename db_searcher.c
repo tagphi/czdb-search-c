@@ -42,17 +42,16 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
 
     int offset = getHyperHeaderBlockSize(headerBlock);
 
-    if (searchType == BTREE) {
-        BtreeModeParam* btreeModeParam = initBtreeModeParam(file, offset);
+    // no matter what search type, we need the header block
+    BtreeModeParam* btreeModeParam = initBtreeModeParam(file, offset);
 
-        if (btreeModeParam == NULL) {
-            free(searcher);
-            fclose(file);
-            return NULL;
-        }
-
-        searcher->btreeModeParam = btreeModeParam;
+    if (btreeModeParam == NULL) {
+        free(searcher);
+        fclose(file);
+        return NULL;
     }
+
+    searcher->btreeModeParam = btreeModeParam;
 
     searcher->searchType = searchType;
     searcher->hyperHeaderBlock = headerBlock;
@@ -62,11 +61,26 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     char superBytes[SUPER_PART_LENGTH];
     fread(superBytes, SUPER_PART_LENGTH, 1, file);
 
-    searcher->ipType = (superBytes[0] & 1) == 0 ? 4 : 6;
-    searcher->ipBytesLength = searcher->ipType == 4 ? 4 : 16;
+    searcher->ipType = (superBytes[0] & 1) == 0 ? IPV4 : IPV6;
+    searcher->ipBytesLength = searcher->ipType == IPV4 ? 4 : 16;
 
     searcher->startIndexPtr = getIntLong(superBytes, 9);
     searcher->endIndexPtr = getIntLong(superBytes, 13);
+    searcher->indexLength = searcher->ipBytesLength * 2L + 4; // start ip + end ip + data ptr
+
+    if (searchType == MEMORY) {
+        // load all index to index buffer
+        long indexBufferLen = searcher->endIndexPtr + searcher->ipBytesLength * 2L + 4;
+        searcher->dbBin = (char*)malloc(indexBufferLen);
+
+        if (searcher->dbBin == NULL) {
+            // handle error
+            closeDBSearcher(searcher);
+        }
+
+        fseek(file, offset, SEEK_SET);
+        fread(searcher->dbBin, indexBufferLen, 1, file);
+    }
 
     // load geo settings
     loadGeoMapping(searcher, offset);
@@ -116,7 +130,9 @@ int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen) 
     int offset = getHyperHeaderBlockSize(dbSearcher->hyperHeaderBlock);
 
     if (dbSearcher->searchType == BTREE) {
-        return bTreeSearch(dbSearcher->file, ipString, dbSearcher, region, regionLen, offset);
+        return bTreeSearch(ipString, dbSearcher, region, regionLen, offset, 0);
+    } else if (dbSearcher->searchType == MEMORY) {
+        return bTreeSearch(ipString, dbSearcher, region, regionLen, offset, 1);
     } else {
         fprintf(stderr, "Unsupported search type\n");
         return -1;
@@ -154,6 +170,11 @@ void closeDBSearcher(DBSearcher* dbSearcher) {
     // Free geoMapData
     if (dbSearcher->geoMapData != NULL) {
         free(dbSearcher->geoMapData);
+    }
+
+    // Free the index buffer
+    if (dbSearcher->dbBin != NULL) {
+        free(dbSearcher->dbBin);
     }
 
     // Finally, free the DBSearcher itself
@@ -298,20 +319,6 @@ void freeBtreeModeParam(BtreeModeParam* param) {
     }
 
     free(param);
-}
-
-/**
- * Determines the type of the IP address (IPv4 or IPv6).
- *
- * @param ip The IP address as a string.
- * @return The type of the IP address (IPV4 or IPV6).
- */
-int getIpType(char* ip) {
-    if (strchr(ip, ':') != NULL) {
-        return IPV6;
-    } else {
-        return IPV4;
-    }
 }
 
 int unpack(char* geoMapData, long columnSelection, unsigned char* region, int regionSize, char* buf, int bufSize) {
@@ -483,10 +490,11 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
  * @return 0 if the operation is successful, -1 if the IP address is not found, -2 if the region buffer is too small.
  *        -3 if allocation error occurs.
  */
-int bTreeSearch(FILE* fp, char* ipString, DBSearcher* dbSearcher, char* region, int regionLen, long offset) {
+int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen, long offset, int memoryMode) {
+    FILE* fp = dbSearcher->file;
     BtreeModeParam* param = dbSearcher->btreeModeParam;
     int searchType;
-    searchType = getIpType(ipString);
+    searchType = dbSearcher->ipType;
     int ipBytesLength = searchType == IPV4 ? 4 : 16;
     char ip[ipBytesLength];
 
@@ -522,7 +530,7 @@ int bTreeSearch(FILE* fp, char* ipString, DBSearcher* dbSearcher, char* region, 
 
     if (sptr == 0) return -1;
 
-    int blockLen = eptr - sptr, blen = INDEX_LENGTH;
+    int blockLen = eptr - sptr, blen = dbSearcher->indexLength;
     char* indexBuffer = (char*)malloc((blockLen + blen) * sizeof(char));
 
     if (indexBuffer == NULL) {
@@ -530,8 +538,14 @@ int bTreeSearch(FILE* fp, char* ipString, DBSearcher* dbSearcher, char* region, 
         goto cleanup;
     }
 
-    fseek(fp, sptr + offset, SEEK_SET);
-    fread(indexBuffer, blockLen + blen, 1, fp);
+    if (memoryMode == 0) {
+        // read from file
+        fseek(fp, sptr + offset, SEEK_SET);
+        fread(indexBuffer, blockLen + blen, 1, fp);
+    } else {
+        // read from index buffer
+        memcpy(indexBuffer, dbSearcher->dbBin + sptr, blockLen + blen);
+    }
 
     l = 0;
     h = blockLen / blen;

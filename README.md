@@ -48,8 +48,13 @@
 
 5. 运行编译后的程序：
     ```bash
-    ./CZDBSearcher -p /path/to/ipdbfile -k key
+    ./CZDBSearcher -p /path/to/ipdbfile -k key -mmemory
     ```
+   参数说明：
+     - `-p`：数据库文件的路径，例如 `/path/to/czdbfile`
+     - `-k`：密钥
+     - `-m`：搜索模式，可以是 'memory' 或 'btree'
+    
 ## 使用
 
 参考main.c文件。

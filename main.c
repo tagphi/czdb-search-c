@@ -5,9 +5,10 @@
 int main(int argc, char *argv[]) {
     char* dbPath = NULL;
     char* key = NULL;
+    char* searchMode = NULL;
     int opt;
 
-    while ((opt = getopt(argc, argv, "p:k:")) != -1) {
+    while ((opt = getopt(argc, argv, "p:k:m:")) != -1) {
         switch (opt) {
         case 'p':
             dbPath = optarg;
@@ -15,19 +16,32 @@ int main(int argc, char *argv[]) {
         case 'k':
             key = optarg;
             break;
+        case 'm':
+            searchMode = optarg;
+            break;
         default:
-            fprintf(stderr, "Usage: %s -p dbPath -k key\n", argv[0]);
+            fprintf(stderr, "Usage: %s -p dbPath -k key -m searchMode\n", argv[0]);
             exit(EXIT_FAILURE);
         }
     }
 
-    if (dbPath == NULL || key == NULL) {
-        fprintf(stderr, "Both -p and -k options are required.\n");
-        fprintf(stderr, "Usage: %s -p dbPath -k key\n", argv[0]);
+    if (dbPath == NULL || key == NULL || searchMode == NULL) {
+        fprintf(stderr, "Both -p, -k and -m options are required.\n");
+        fprintf(stderr, "Usage: %s -p dbPath -k key -m searchMode\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    DBSearcher* dbSearcher = initDBSearcher(dbPath, key, BTREE);
+    int mode;
+    if (strcmp(searchMode, "memory") == 0) {
+        mode = MEMORY;
+    } else if (strcmp(searchMode, "btree") == 0) {
+        mode = BTREE;
+    } else {
+        fprintf(stderr, "Invalid search mode. It should be either 'memory' or 'btree'.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    DBSearcher* dbSearcher = initDBSearcher(dbPath, key, mode);
 
     info(dbSearcher);
 
@@ -37,7 +51,6 @@ int main(int argc, char *argv[]) {
     while (1) {
         printf("Enter IP address (or 'q' to quit): ");
         fgets(ip, 50, stdin);
-
         // Remove trailing newline
         ip[strcspn(ip, "\n")] = 0;
 

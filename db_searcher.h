@@ -11,7 +11,6 @@
 
 #define SUPER_PART_LENGTH 17
 #define HEADER_BLOCK_LENGTH 20 // Btree index length, 16 bytes for ip, 4 bytes for data ptr points to index data
-#define INDEX_LENGTH 36 // index row length, 16 bytes for start ip, 16 for end ip, 4 bytes for data ptr points to region data
 #define HEADER_BLOCK_PTR 9
 #define FILE_SIZE_PTR 1
 
@@ -38,6 +37,8 @@ typedef struct {
     int ipType;
     int ipBytesLength;
     int columnSelection;
+    char* dbBin;
+    int indexLength;
 } DBSearcher;
 
 DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType);
@@ -52,7 +53,7 @@ void loadGeoMapping(DBSearcher* dbSearcher, int offset);
 
 void freeBtreeModeParam(BtreeModeParam* param);
 
-int bTreeSearch(FILE* fp, char* ip, DBSearcher* dbSearcher, char* region, int regionLen, long offset);
+int bTreeSearch(char* ip, DBSearcher* dbSearcher, char* region, int regionLen, long offset, int memoryMode);
 
 void printIp(char* ipBytes, int ipType);
 
