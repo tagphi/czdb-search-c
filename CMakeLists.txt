@@ -22,11 +22,14 @@ else()
     message(FATAL_ERROR "OpenSSL not found")
 endif()
 
+# Set the default value for MSGPACK_ROOT
+set(MSGPACK_ROOT "/usr/local" CACHE PATH "Default path to MsgPack")
+
 # Include msgpack headers
-include_directories(/usr/local/include)
+include_directories(${MSGPACK_ROOT}/include)
 
 # Link msgpack library
-find_library(MSGPACK_LIBRARY msgpack-c /usr/local/lib)
+find_library(MSGPACK_LIBRARY msgpack-c ${MSGPACK_ROOT}/lib)
 if(MSGPACK_LIBRARY)
     target_link_libraries(db_searcher ${MSGPACK_LIBRARY})
     target_link_libraries(CZDBSearcher ${MSGPACK_LIBRARY})

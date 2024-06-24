@@ -34,6 +34,10 @@
     ```bash
     cmake -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ..
     ```
+   如果你的message pack不是安装在/usr/local, 你可以在cmake时指定路径:
+    ```bash
+    cmake -DMSGPACK_ROOT=/path/to/msgpack ..
+    ```
 
 4. 使用生成的Makefile编译项目：
     ```bash
