@@ -559,7 +559,7 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
 
         if (cmpStart >= 0 && cmpEnd <= 0) {
             // IP is in this block
-            dataBlockPtrNSize = getIntLong(indexBuffer, p + 32);
+            dataBlockPtrNSize = getIntLong(indexBuffer, p + ipBytesLength * 2);
 
             break;
         } else if (cmpStart < 0) {
