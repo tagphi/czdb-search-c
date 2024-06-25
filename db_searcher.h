@@ -49,11 +49,13 @@ void closeDBSearcher(DBSearcher* dbSearcher);
 void info(DBSearcher* dbSearcher);
 BtreeModeParam* initBtreeModeParam(FILE* fp, long offset);
 
-void loadGeoMapping(DBSearcher* dbSearcher, int offset);
+int loadGeoMapping(DBSearcher* dbSearcher, int offset, char* key);
 
 void freeBtreeModeParam(BtreeModeParam* param);
 
 int bTreeSearch(char* ip, DBSearcher* dbSearcher, char* region, int regionLen, long offset, int memoryMode);
+
+int decrypt(char* encryptedBytes, int size, char* key);
 
 void printIp(char* ipBytes, int ipType);
 

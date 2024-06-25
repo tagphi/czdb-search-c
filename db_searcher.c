@@ -83,12 +83,17 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     }
 
     // load geo settings
-    loadGeoMapping(searcher, offset);
+    int ret = loadGeoMapping(searcher, offset, key);
+
+    if (ret < 0) {
+        closeDBSearcher(searcher);
+        return NULL;
+    }
 
     return searcher;
 }
 
-void loadGeoMapping(DBSearcher* dbSearcher, int offset) {
+int loadGeoMapping(DBSearcher* dbSearcher, int offset, char* key) {
     FILE* file = dbSearcher->file;
     int endIndexPtr = dbSearcher->endIndexPtr;
     int ipBytesLength = dbSearcher->ipBytesLength;
@@ -103,7 +108,7 @@ void loadGeoMapping(DBSearcher* dbSearcher, int offset) {
 
     // column selection == 0 means not using geo mapping
     if (dbSearcher->columnSelection == 0) {
-        return;
+        return 0;
     }
 
     int geoMapPtr = columnSelectionPtr + 4;
@@ -115,11 +120,14 @@ void loadGeoMapping(DBSearcher* dbSearcher, int offset) {
     dbSearcher->geoMapData = (char*)malloc(geoMapSize);
 
     if (dbSearcher->geoMapData == NULL) {
-        // handle error
-        return;
+        return -1;
     }
 
     fread(dbSearcher->geoMapData, geoMapSize, 1, file);
+
+    decrypt(dbSearcher->geoMapData, geoMapSize, key);
+
+    return 0;
 }
 
 /**
@@ -404,6 +412,8 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
     // read geoMapData to dataRow, from geoPtr, size geoLen
     memcpy(dataRow, geoMapData + geoPtr, geoLen);
 
+    printBytesInDecimal(dataRow, geoLen);
+
     // message unpack
     msgpack_unpacker unp;
     bool result = msgpack_unpacker_init(&unp, geoLen);
@@ -615,6 +625,21 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     }
 
     return -3;
+}
+
+int decrypt(char* encryptedBytes, int size, char* key) {
+    unsigned char keyBytes[128];
+    int ret = base64_decode(key, strlen(key), keyBytes, 128);
+
+    if (ret < 0) {
+        return ret;
+    }
+
+    for (size_t i = 0; i < size; i++) {
+        encryptedBytes[i] = encryptedBytes[i] ^ keyBytes[i % 16];
+    }
+
+    return 0;
 }
 
 void printIp(char* ipBytes, int ipType) {
