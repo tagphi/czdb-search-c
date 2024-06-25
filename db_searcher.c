@@ -100,6 +100,12 @@ void loadGeoMapping(DBSearcher* dbSearcher, int offset) {
     fread(data, 4, 1, file);
 
     dbSearcher->columnSelection = getIntLong(data, 0);
+
+    // column selection == 0 means not using geo mapping
+    if (dbSearcher->columnSelection == 0) {
+        return;
+    }
+
     int geoMapPtr = columnSelectionPtr + 4;
     fseek(file, geoMapPtr, SEEK_SET);
     fread(data, 4, 1, file);
@@ -358,11 +364,16 @@ int unpack(char* geoMapData, long columnSelection, unsigned char* region, int re
             msgpack_object_str otherDataObj = obj.via.str;
             uint32_t otherDataSize = otherDataObj.size;
 
-            int sizeWritten = getActualGeo(geoMapData, columnSelection, geoPtr, geoLen, buf, bufSize);
+            int sizeWritten = 0;
 
-            if (sizeWritten == -1) {
-                ret = -1;
-                goto cleanup;
+            if (geoPosMixSize != 0) {
+                // do geo mapping
+                sizeWritten = getActualGeo(geoMapData, columnSelection, geoPtr, geoLen, buf, bufSize);
+
+                if (sizeWritten == -1) {
+                    ret = -1;
+                    goto cleanup;
+                }
             }
 
             // copy otherDataObj.ptr to buf
@@ -487,6 +498,7 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
  * @param region Buffer to store the region associated with the IP address.
  * @param regionLen Length of the region buffer.
  * @param offset Offset to start reading from in the database file.
+ * @package memoryMode 0 for reading from file, 1 for reading from index buffer.
  * @return 0 if the operation is successful, -1 if the IP address is not found, -2 if the region buffer is too small.
  *        -3 if allocation error occurs.
  */
@@ -531,20 +543,20 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     if (sptr == 0) return -1;
 
     int blockLen = eptr - sptr, blen = dbSearcher->indexLength;
-    char* indexBuffer = (char*)malloc((blockLen + blen) * sizeof(char));
-
-    if (indexBuffer == NULL) {
-        // handle error
-        goto cleanup;
-    }
+    char* indexBuffer = NULL;
 
     if (memoryMode == 0) {
         // read from file
+        indexBuffer = (char*)malloc((blockLen + blen) * sizeof(char));
+        if (indexBuffer == NULL) {
+            // handle error
+            goto cleanup;
+        }
         fseek(fp, sptr + offset, SEEK_SET);
         fread(indexBuffer, blockLen + blen, 1, fp);
     } else {
-        // read from index buffer
-        memcpy(indexBuffer, dbSearcher->dbBin + sptr, blockLen + blen);
+        // use memory directly
+        indexBuffer = dbSearcher->dbBin + sptr;
     }
 
     l = 0;
@@ -591,14 +603,14 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
 
     fread(data, dataLen, 1, fp);
 
-    unpack(dbSearcher->geoMapData, dbSearcher->columnSelection, data, dataLen, region, regionLen);
+    int unpackResult = unpack(dbSearcher->geoMapData, dbSearcher->columnSelection, data, dataLen, region, regionLen);
 
     free(data);
 
-    return 0;
+    return unpackResult;
 
     cleanup:
-    if (indexBuffer != NULL) {
+    if (indexBuffer != NULL && memoryMode == 0) {
         free(indexBuffer);
     }
 
