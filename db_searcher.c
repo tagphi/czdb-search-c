@@ -412,8 +412,6 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
     // read geoMapData to dataRow, from geoPtr, size geoLen
     memcpy(dataRow, geoMapData + geoPtr, geoLen);
 
-    printBytesInDecimal(dataRow, geoLen);
-
     // message unpack
     msgpack_unpacker unp;
     bool result = msgpack_unpacker_init(&unp, geoLen);
