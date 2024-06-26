@@ -577,7 +577,7 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
         int p = m * blen;
 
         int cmpStart = compareBytes(ip, &indexBuffer[p], ipBytesLength);
-        int cmpEnd = compareBytes(ip, &indexBuffer[p + 16], ipBytesLength);
+        int cmpEnd = compareBytes(ip, &indexBuffer[p + ipBytesLength], ipBytesLength);
 
         if (cmpStart >= 0 && cmpEnd <= 0) {
             // IP is in this block
@@ -593,7 +593,10 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
         }
     }
 
-    free(indexBuffer);
+    if (memoryMode == 0) {
+        free(indexBuffer);
+    }
+
     if (dataBlockPtrNSize == 0) return -1; // not fount
 
     int dataLen = (int) ((dataBlockPtrNSize >> 24) & 0xFF);
@@ -603,7 +606,6 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     }
 
     int dataPtr = (int) ((dataBlockPtrNSize & 0x00FFFFFF));
-    fseek(fp, dataPtr + offset, SEEK_SET);
     unsigned char* data = (unsigned char*)malloc(dataLen);
 
     if (data == NULL) {
@@ -611,7 +613,12 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
         goto cleanup;
     }
 
-    fread(data, dataLen, 1, fp);
+    if (memoryMode == 0) {
+        fseek(fp, dataPtr + offset, SEEK_SET);
+        fread(data, dataLen, 1, fp);
+    } else {
+        memcpy(data, dbSearcher->dbBin + dataPtr, dataLen);
+    }
 
     int unpackResult = unpack(dbSearcher->geoMapData, dbSearcher->columnSelection, data, dataLen, region, regionLen);
 
