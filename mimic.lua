@@ -56,19 +56,8 @@ ffi.cdef[[
 
     DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType);
     int search(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen);
-    int unpack(char* geoMapData, long columnSelection, unsigned char* region, int regionSize, char* buf, int bufSize);
-    int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen, char* buf, int bufSize);
     void closeDBSearcher(DBSearcher* dbSearcher);
     void info(DBSearcher* dbSearcher);
-    BtreeModeParam* initBtreeModeParam(void* fp, long offset);
-
-    int loadGeoMapping(DBSearcher* dbSearcher, int offset, char* key);
-
-    void freeBtreeModeParam(BtreeModeParam* param);
-
-    int bTreeSearch(char* ip, DBSearcher* dbSearcher, char* region, int regionLen, long offset, int memoryMode);
-
-    int decrypt(char* encryptedBytes, int size, char* key);
 ]]
 
 local lib = ffi.load("./tmp/libdb_searcher.dylib")  -- Adjust path as necessary
