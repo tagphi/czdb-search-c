@@ -453,7 +453,7 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
                 int strSize = str.size;
                 char* value = str.ptr;
 
-                if (strcmp(value, "") == 0) {
+                if (value == NULL || strcmp(value, "") == 0) {
                     value = "null";
                 }
 
