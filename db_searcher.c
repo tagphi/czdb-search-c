@@ -66,7 +66,7 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
 
     searcher->startIndexPtr = getIntLong(superBytes, 9);
     searcher->endIndexPtr = getIntLong(superBytes, 13);
-    searcher->indexLength = searcher->ipBytesLength * 2L + 4; // start ip + end ip + data ptr
+    searcher->indexLength = searcher->ipBytesLength * 2L + 5; // start ip + end ip + 4 bytes data ptr + 1 byte len
 
     if (searchType == MEMORY) {
         // load all index to index buffer
@@ -98,7 +98,7 @@ int loadGeoMapping(DBSearcher* dbSearcher, int offset, char* key) {
     int endIndexPtr = dbSearcher->endIndexPtr;
     int ipBytesLength = dbSearcher->ipBytesLength;
 
-    int columnSelectionPtr = offset + endIndexPtr + ipBytesLength * 2L + 4;
+    int columnSelectionPtr = offset + endIndexPtr + ipBytesLength * 2L + 5; // 4 bytes ptr and 1 bytes len
     fseek(file, columnSelectionPtr, SEEK_SET);
 
     char data[4];
@@ -569,7 +569,10 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
 
     l = 0;
     h = blockLen / blen;
-    long dataBlockPtrNSize = 0;
+
+    int dataPtr = 0;
+    int dataLen = 0;
+
     while (l <= h) {
         int m = (l + h) >> 1;
         int p = m * blen;
@@ -579,7 +582,8 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
 
         if (cmpStart >= 0 && cmpEnd <= 0) {
             // IP is in this block
-            dataBlockPtrNSize = getIntLong(indexBuffer, p + ipBytesLength * 2);
+            dataPtr = getIntLong(indexBuffer, p + ipBytesLength * 2);
+            dataLen = getInt1(indexBuffer, p + ipBytesLength * 2 + 4);
 
             break;
         } else if (cmpStart < 0) {
@@ -595,15 +599,13 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
         free(indexBuffer);
     }
 
-    if (dataBlockPtrNSize == 0) return -1; // not fount
+    if (dataPtr == 0) return -1; // not fount
 
-    int dataLen = (int) ((dataBlockPtrNSize >> 24) & 0xFF);
     if (dataLen > regionLen) {
         // exceeds buffer length
         return -2;
     }
 
-    int dataPtr = (int) ((dataBlockPtrNSize & 0x00FFFFFF));
     unsigned char* data = (unsigned char*)malloc(dataLen);
 
     if (data == NULL) {
