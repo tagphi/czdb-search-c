@@ -40,7 +40,7 @@ HyperHeaderBlock* decryptHyperHeaderBlock(FILE *file, const char *key) {
 
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
-    int currentDate = (tm.tm_year + 1900 + 1) % 100 * 10000 + (tm.tm_mon + 1) * 100 + tm.tm_mday;
+    int currentDate = (tm.tm_year + 1900) % 100 * 10000 + (tm.tm_mon + 1) * 100 + tm.tm_mday;
 
     if (decryptedBlock.expirationDate < currentDate) {
         printf("DB is expired\n");
