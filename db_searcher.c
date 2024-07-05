@@ -508,7 +508,7 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
  * @param offset Offset to start reading from in the database file.
  * @package memoryMode 0 for reading from file, 1 for reading from index buffer.
  * @return 0 if the operation is successful, -1 if the IP address is not found, -2 if the region buffer is too small.
- *        -3 if allocation error occurs.
+ *        -3 if allocation error occurs. -4 ip address format incorrect
  */
 int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int regionLen, long offset, int memoryMode) {
     FILE* fp = dbSearcher->file;
@@ -521,7 +521,11 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     // clear region
     memset(region, 0, regionLen);
 
-    getIpBytes(ipString, ip, searchType);
+    int ret = getIpBytes(ipString, ip, searchType);
+
+    if (ret < 0) {
+        return -4;
+    }
 
     int l = 0, h = param->headerLength - 1, sptr = 0, eptr = 0;
     while (l <= h) {
