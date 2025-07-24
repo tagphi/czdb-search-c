@@ -1,7 +1,11 @@
+#include "config.h"
 #include "db_searcher.h"
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
+
+#if !HAVE_GETOPT
+#include "getopt.h"
+#endif
 
 int main(int argc, char *argv[]) {
     char* dbPath = NULL;

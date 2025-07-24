@@ -8,7 +8,6 @@
 //
 
 #include <string.h>
-#include <arpa/inet.h>
 #include "db_searcher.h"
 #include "byte_utils.h"
 #include <msgpack.h>

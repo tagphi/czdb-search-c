@@ -1,0 +1,48 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// Platform detection
+#ifdef _WIN32
+    #define PLATFORM_WINDOWS 1
+    #define PLATFORM_UNIX 0
+#else
+    #define PLATFORM_WINDOWS 0
+    #define PLATFORM_UNIX 1
+#endif
+
+// DLL export/import macros for Windows
+#ifdef _WIN32
+    #ifdef BUILDING_DB_SEARCHER_DLL
+        #define DB_SEARCHER_API __declspec(dllexport)
+    #else
+        #define DB_SEARCHER_API __declspec(dllimport)
+    #endif
+#else
+    #define DB_SEARCHER_API
+#endif
+
+// Platform-specific includes
+#if PLATFORM_WINDOWS
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <windows.h>
+    #include <io.h>
+    #include <direct.h>
+    #pragma comment(lib, "ws2_32.lib")
+    
+    // Windows doesn't have getopt, we'll need to implement it
+    #ifndef HAVE_GETOPT
+        #define HAVE_GETOPT 0
+    #endif
+#else
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <netinet/in.h>
+    #include <sys/socket.h>
+    
+    #ifndef HAVE_GETOPT
+        #define HAVE_GETOPT 1
+    #endif
+#endif
+
+#endif // CONFIG_H 
