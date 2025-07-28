@@ -2,7 +2,13 @@
 // Created by 刘聪 on 2024/6/5.
 //
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <arpa/inet.h>
+#endif
 #include "byte_utils.h"
 
 int getIntLong(char *b, int offset) {
