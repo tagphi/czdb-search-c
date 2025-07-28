@@ -554,12 +554,50 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     }
 
     if (l > h) {
+        // 添加Java版本中的特殊边界检查
+        if (l == 0 && h <= 0) {
+            // less than header range
+            free(ip);
+            return -1;
+        }
+        
+        // 检查边界情况，避免数组越界
         if (l < param->headerLength) {
-            sptr = param->HeaderPtr[l - 1];
-            eptr = param->HeaderPtr[l];
+            // IP在某个header block范围内
+            if (l > 0) {
+                sptr = param->HeaderPtr[l - 1];
+                eptr = param->HeaderPtr[l];
+            } else {
+                // IP小于第一个header block，检查是否在第一个block的范围内
+                if (param->headerLength > 0) {
+                    // 检查IP是否真的小于第一个header block的起始IP
+                    int cmpFirst = compareBytes(ip, param->HeaderSip[0], ipBytesLength);
+                    if (cmpFirst < 0) {
+                        printf("Debug: IP is less than first header block, cmpFirst=%d\n", cmpFirst);
+                        free(ip);
+                        return -1; // IP小于第一个header block的起始IP
+                    }
+                    sptr = 0; // 从文件开始
+                    eptr = param->HeaderPtr[0];
+                } else {
+                    free(ip);
+                    return -1; // 没有有效的header blocks
+                }
+            }
         } else if (h >= 0) {
-            sptr = param->HeaderPtr[h];
-            eptr = param->HeaderPtr[h + 1];
+            // IP大于最后一个header block，检查是否在最后一个block的范围内
+            if (h < param->headerLength - 1) {
+                sptr = param->HeaderPtr[h];
+                eptr = param->HeaderPtr[h + 1];
+            } else {
+                // 使用最后一个block的范围，参考Java版本的实现
+                sptr = param->HeaderPtr[h];
+                eptr = sptr + dbSearcher->indexLength; // 使用indexLength作为block长度
+            }
+        } else {
+            // 没有找到合适的范围
+            free(ip);
+            return -1;
         }
     }
 
