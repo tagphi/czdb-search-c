@@ -75,9 +75,12 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     searcher->indexLength = searcher->ipBytesLength * 2L + 5; // start ip + end ip + 4 bytes data ptr + 1 byte len
 
     if (searchType == MEMORY) {
-        // load all index to index buffer
-        long indexBufferLen = searcher->endIndexPtr + searcher->ipBytesLength * 2L + 4;
-        searcher->dbBin = (char*)malloc(indexBufferLen);
+        // load all data from offset to end of file
+        fseek(file, 0, SEEK_END);
+        long fileSize = ftell(file);
+        long dataBufferLen = fileSize - offset;
+        
+        searcher->dbBin = (char*)malloc(dataBufferLen);
 
         if (searcher->dbBin == NULL) {
             // handle error
@@ -85,7 +88,7 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
         }
 
         fseek(file, offset, SEEK_SET);
-        fread(searcher->dbBin, indexBufferLen, 1, file);
+        fread(searcher->dbBin, dataBufferLen, 1, file);
     }
 
     // load geo settings
@@ -554,50 +557,23 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     }
 
     if (l > h) {
-        // 添加Java版本中的特殊边界检查
+        // 按照Java版本的逻辑处理边界情况
         if (l == 0 && h <= 0) {
             // less than header range
             free(ip);
             return -1;
         }
         
-        // 检查边界情况，避免数组越界
         if (l < param->headerLength) {
-            // IP在某个header block范围内
-            if (l > 0) {
-                sptr = param->HeaderPtr[l - 1];
-                eptr = param->HeaderPtr[l];
-            } else {
-                // IP小于第一个header block，检查是否在第一个block的范围内
-                if (param->headerLength > 0) {
-                    // 检查IP是否真的小于第一个header block的起始IP
-                    int cmpFirst = compareBytes(ip, param->HeaderSip[0], ipBytesLength);
-                    if (cmpFirst < 0) {
-                        printf("Debug: IP is less than first header block, cmpFirst=%d\n", cmpFirst);
-                        free(ip);
-                        return -1; // IP小于第一个header block的起始IP
-                    }
-                    sptr = 0; // 从文件开始
-                    eptr = param->HeaderPtr[0];
-                } else {
-                    free(ip);
-                    return -1; // 没有有效的header blocks
-                }
-            }
-        } else if (h >= 0) {
-            // IP大于最后一个header block，检查是否在最后一个block的范围内
-            if (h < param->headerLength - 1) {
-                sptr = param->HeaderPtr[h];
-                eptr = param->HeaderPtr[h + 1];
-            } else {
-                // 使用最后一个block的范围，参考Java版本的实现
-                sptr = param->HeaderPtr[h];
-                eptr = sptr + dbSearcher->indexLength; // 使用indexLength作为block长度
-            }
-        } else {
-            // 没有找到合适的范围
-            free(ip);
-            return -1;
+            sptr = param->HeaderPtr[l - 1];
+            eptr = param->HeaderPtr[l];
+        } else if (h >= 0 && h + 1 < param->headerLength) {
+            sptr = param->HeaderPtr[h];
+            eptr = param->HeaderPtr[h + 1];
+        } else { // search to last header line, possible in last index block
+            sptr = param->HeaderPtr[param->headerLength - 1];
+            int blockLen = dbSearcher->indexLength;
+            eptr = sptr + blockLen;
         }
     }
 

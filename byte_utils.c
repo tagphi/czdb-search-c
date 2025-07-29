@@ -23,7 +23,7 @@ int getIntLong(char *b, int offset) {
 }
 
 int getInt1(char *b, int offset) {
-    return (int)(b[offset] & 0xFF);
+    return (int)((unsigned char)b[offset] & 0xFF);
 }
 
 void printBytesInHex(uint8_t *bytes, size_t size) {
