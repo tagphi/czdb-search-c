@@ -9,8 +9,6 @@
 #include "byte_utils.h"
 
 #define CLIENT_ID_MASK 0xFFF00000
-#define EXPIRATION_DATE_MASK 0x000FFFFF
-#define RANDOM_SIZE_OFFSET 4
 
 int base64_decode(const char* input, int length, unsigned char* buffer, int buffer_length) {
     BIO *b64, *bmem;
@@ -95,7 +93,7 @@ int decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t
 
     // Decode Base64 key
     unsigned char key_bytes[16];
-    int ret = base64_decode(key, strlen(key), key_bytes, 16);
+    int ret = base64_decode(key, (int)strlen(key), key_bytes, 16);
 
     if (ret < 0) {
         fprintf(stderr, "Error: Base64 decoding failed.\n");
@@ -103,7 +101,7 @@ int decryptEncryptedBytes(const char *key, const uint8_t *encryptedBytes, size_t
         return -1;
     }
 
-    if (!aes_ecb_decrypt(encryptedBytes, encryptedSize, key_bytes, decryptedBytes)) {
+    if (!aes_ecb_decrypt(encryptedBytes, (uint8_t)encryptedSize, key_bytes, decryptedBytes)) {
         fprintf(stderr, "Error: AES decryption failed.\n");
         free(decryptedBytes);
         return -1;

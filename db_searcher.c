@@ -8,7 +8,13 @@
 //
 
 #include <string.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <arpa/inet.h>
+#endif
 #include "db_searcher.h"
 #include "byte_utils.h"
 #include <msgpack.h>
@@ -69,9 +75,12 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
     searcher->indexLength = searcher->ipBytesLength * 2L + 5; // start ip + end ip + 4 bytes data ptr + 1 byte len
 
     if (searchType == MEMORY) {
-        // load all index to index buffer
-        long indexBufferLen = searcher->endIndexPtr + searcher->ipBytesLength * 2L + 4;
-        searcher->dbBin = (char*)malloc(indexBufferLen);
+        // load all data from offset to end of file
+        fseek(file, 0, SEEK_END);
+        long fileSize = ftell(file);
+        long dataBufferLen = fileSize - offset;
+        
+        searcher->dbBin = (char*)malloc(dataBufferLen);
 
         if (searcher->dbBin == NULL) {
             // handle error
@@ -79,7 +88,7 @@ DBSearcher* initDBSearcher(char* dbFilePath, char* key, SearchType searchType) {
         }
 
         fseek(file, offset, SEEK_SET);
-        fread(searcher->dbBin, indexBufferLen, 1, file);
+        fread(searcher->dbBin, dataBufferLen, 1, file);
     }
 
     // load geo settings
@@ -356,7 +365,6 @@ int unpack(char* geoMapData, long columnSelection, unsigned char* region, int re
             msgpack_unpacker_buffer_consumed(&unp, regionSize);
 
             msgpack_unpacked und;
-            msgpack_unpack_return muret;
             msgpack_unpacked_init(&und);
             msgpack_unpacker_next(&unp, &und);
 
@@ -385,7 +393,7 @@ int unpack(char* geoMapData, long columnSelection, unsigned char* region, int re
             }
 
             // copy otherDataObj.ptr to buf
-            if (sizeWritten + otherDataSize < bufSize) {
+            if (sizeWritten + (int)otherDataSize < bufSize) {
                 strncat(buf, otherDataObj.ptr, otherDataSize);
             } else {
                 ret = -1;
@@ -407,7 +415,10 @@ int unpack(char* geoMapData, long columnSelection, unsigned char* region, int re
 }
 
 int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen, char* buf, int bufSize) {
-    char dataRow[geoLen];
+    char* dataRow = (char*)malloc(geoLen);
+    if (dataRow == NULL) {
+        return -1;
+    }
 
     // read geoMapData to dataRow, from geoPtr, size geoLen
     memcpy(dataRow, geoMapData + geoPtr, geoLen);
@@ -433,9 +444,8 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
             msgpack_unpacker_buffer_consumed(&unp, geoLen);
 
             msgpack_unpacked und;
-            msgpack_unpack_return muret;
             msgpack_unpacked_init(&und);
-            muret = msgpack_unpacker_next(&unp, &und);
+            msgpack_unpacker_next(&unp, &und);
 
             msgpack_object obj = und.data;
 
@@ -445,13 +455,13 @@ int getActualGeo(char* geoMapData, long columnSelection, int geoPtr, int geoLen,
             int remainingSize = bufSize - 1; // Leave space for null terminator
             int bytesWritten = 0;
 
-            for (int i = 0; i < columnCount; i++) {
+            for (int i = 0; i < (int)columnCount; i++) {
                 bool columnSelected = (columnSelection >> (i + 1) & 1) == 1;
                 msgpack_object mpobj = columns.ptr[i];
 
                 msgpack_object_str str = mpobj.via.str;
                 int strSize = str.size;
-                char* value = str.ptr;
+                const char* value = str.ptr;
 
                 if (value == NULL || strcmp(value, "") == 0) {
                     value = "null";
@@ -516,7 +526,10 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     int searchType;
     searchType = dbSearcher->ipType;
     int ipBytesLength = searchType == IPV4 ? 4 : 16;
-    char ip[ipBytesLength];
+    char* ip = (char*)malloc(ipBytesLength);
+    if (ip == NULL) {
+        return -3; // allocation error
+    }
 
     // clear region
     memset(region, 0, regionLen);
@@ -524,6 +537,7 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     int ret = getIpBytes(ipString, ip, searchType);
 
     if (ret < 0) {
+        free(ip);
         return -4;
     }
 
@@ -543,16 +557,30 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     }
 
     if (l > h) {
+        // 按照Java版本的逻辑处理边界情况
+        if (l == 0 && h <= 0) {
+            // less than header range
+            free(ip);
+            return -1;
+        }
+        
         if (l < param->headerLength) {
             sptr = param->HeaderPtr[l - 1];
             eptr = param->HeaderPtr[l];
-        } else if (h >= 0) {
+        } else if (h >= 0 && h + 1 < param->headerLength) {
             sptr = param->HeaderPtr[h];
             eptr = param->HeaderPtr[h + 1];
+        } else { // search to last header line, possible in last index block
+            sptr = param->HeaderPtr[param->headerLength - 1];
+            int blockLen = dbSearcher->indexLength;
+            eptr = sptr + blockLen;
         }
     }
 
-    if (sptr == 0) return -1;
+    if (sptr == 0) {
+        free(ip);
+        return -1;
+    }
 
     int blockLen = eptr - sptr, blen = dbSearcher->indexLength;
     char* indexBuffer = NULL;
@@ -603,10 +631,14 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
         free(indexBuffer);
     }
 
-    if (dataPtr == 0) return -1; // not fount
+    if (dataPtr == 0) {
+        free(ip);
+        return -1; // not found
+    }
 
     if (dataLen > regionLen) {
         // exceeds buffer length
+        free(ip);
         return -2;
     }
 
@@ -627,6 +659,7 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     int unpackResult = unpack(dbSearcher->geoMapData, dbSearcher->columnSelection, data, dataLen, region, regionLen);
 
     free(data);
+    free(ip);
 
     return unpackResult;
 
@@ -634,19 +667,20 @@ int bTreeSearch(char* ipString, DBSearcher* dbSearcher, char* region, int region
     if (indexBuffer != NULL && memoryMode == 0) {
         free(indexBuffer);
     }
+    free(ip);
 
     return -3;
 }
 
 int decrypt(char* encryptedBytes, int size, char* key) {
     unsigned char keyBytes[128];
-    int ret = base64_decode(key, strlen(key), keyBytes, 128);
+    int ret = base64_decode(key, (int)strlen(key), keyBytes, 128);
 
     if (ret < 0) {
         return ret;
     }
 
-    for (size_t i = 0; i < size; i++) {
+    for (int i = 0; i < size; i++) {
         encryptedBytes[i] = encryptedBytes[i] ^ keyBytes[i % 16];
     }
 

@@ -2,7 +2,13 @@
 // Created by 刘聪 on 2024/6/5.
 //
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <arpa/inet.h>
+#endif
 #include "byte_utils.h"
 
 int getIntLong(char *b, int offset) {
@@ -17,7 +23,7 @@ int getIntLong(char *b, int offset) {
 }
 
 int getInt1(char *b, int offset) {
-    return (int)(b[offset] & 0xFF);
+    return (int)((unsigned char)b[offset] & 0xFF);
 }
 
 void printBytesInHex(uint8_t *bytes, size_t size) {
